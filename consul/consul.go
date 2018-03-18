@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"log"
 	"net/url"
-	"strings"
-	"strconv"
 	"os"
+	"strconv"
+	"strings"
+
 	"github.com/gliderlabs/registrator/bridge"
 	consulapi "github.com/hashicorp/consul/api"
 	"github.com/hashicorp/go-cleanhttp"
@@ -34,16 +35,16 @@ func (f *Factory) New(uri *url.URL) bridge.RegistryAdapter {
 	if uri.Scheme == "consul-unix" {
 		config.Address = strings.TrimPrefix(uri.String(), "consul-")
 	} else if uri.Scheme == "consul-tls" {
-	        tlsConfigDesc := &consulapi.TLSConfig {
-			  Address: uri.Host,
-			  CAFile: os.Getenv("CONSUL_CACERT"),
-  			  CertFile: os.Getenv("CONSUL_TLSCERT"),
-  			  KeyFile: os.Getenv("CONSUL_TLSKEY"),
-			  InsecureSkipVerify: false,
+		tlsConfigDesc := &consulapi.TLSConfig{
+			Address:            uri.Host,
+			CAFile:             os.Getenv("CONSUL_CACERT"),
+			CertFile:           os.Getenv("CONSUL_TLSCERT"),
+			KeyFile:            os.Getenv("CONSUL_TLSKEY"),
+			InsecureSkipVerify: false,
 		}
 		tlsConfig, err := consulapi.SetupTLSConfig(tlsConfigDesc)
 		if err != nil {
-		   log.Fatal("Cannot set up Consul TLSConfig", err)
+			log.Fatal("Cannot set up Consul TLSConfig", err)
 		}
 		config.Scheme = "https"
 		transport := cleanhttp.DefaultPooledTransport()
@@ -83,12 +84,16 @@ func (r *ConsulAdapter) Register(service *bridge.Service) error {
 	registration.Port = service.Port
 	registration.Tags = service.Tags
 	registration.Address = service.IP
-	registration.Check = r.buildCheck(service)
+	registration.Checks = r.buildChecks(service)
 	return r.client.Agent().ServiceRegister(registration)
 }
 
-func (r *ConsulAdapter) buildCheck(service *bridge.Service) *consulapi.AgentServiceCheck {
+func (r *ConsulAdapter) buildChecks(service *bridge.Service) (checks consulapi.AgentServiceChecks) {
+	checks = make(consulapi.AgentServiceChecks, 0)
 	check := new(consulapi.AgentServiceCheck)
+
+	check.Name = "health"
+
 	if status := service.Attrs["check_initial_status"]; status != "" {
 		check.Status = status
 	}
@@ -114,7 +119,7 @@ func (r *ConsulAdapter) buildCheck(service *bridge.Service) *consulapi.AgentServ
 			check.Timeout = timeout
 		}
 	} else {
-		return nil
+		return
 	}
 	if check.Script != "" || check.HTTP != "" || check.TCP != "" {
 		if interval := service.Attrs["check_interval"]; interval != "" {
@@ -126,7 +131,30 @@ func (r *ConsulAdapter) buildCheck(service *bridge.Service) *consulapi.AgentServ
 	if deregister_after := service.Attrs["check_deregister_after"]; deregister_after != "" {
 		check.DeregisterCriticalServiceAfter = deregister_after
 	}
-	return check
+
+	checks = append(checks, check)
+
+	// Additional health-check for the diagnostics endpoint (if configured).
+	if diagnosticsEndpointPath, ok := service.Attrs["check_http_diagnostics"]; ok {
+		// Quick-and-dirty clone
+		diagnosticCheck := &(*check)
+
+		diagnosticCheck.Name = "diagnostics"
+
+		// Additional HTTP check for diagnostic end-point
+		checkURL, err := url.Parse(diagnosticCheck.HTTP)
+		if err != nil {
+			log.Printf("Error parsing HTTP check URL: %s", err)
+
+			return
+		}
+		checkURL.Path = diagnosticsEndpointPath
+		diagnosticCheck.HTTP = checkURL.String()
+
+		checks = append(checks, diagnosticCheck)
+	}
+
+	return
 }
 
 func (r *ConsulAdapter) Deregister(service *bridge.Service) error {
