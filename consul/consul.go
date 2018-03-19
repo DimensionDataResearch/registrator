@@ -135,11 +135,11 @@ func (r *ConsulAdapter) buildChecks(service *bridge.Service) (checks consulapi.A
 	checks = append(checks, check)
 
 	// Additional script based health-check for the diagnostics endpoint (if configured).
-	if diagnosticsEndpointPath, ok := service.Attrs["check_script_diagnostics"]; ok {
+	if diagnosticCheckScript, ok := service.Attrs["check_script_diagnostics"]; ok {
 		diagnosticCheck := new(consulapi.AgentServiceCheck)
 
 		diagnosticCheck.Name = "diagnostics"
-		diagnosticCheck.Script = r.interpolateService(script, service)
+		diagnosticCheck.Script = r.interpolateService(diagnosticCheckScript, service)
 		if timeout := service.Attrs["check_timeout_diagnostics"]; timeout != "" {
 			diagnosticCheck.Timeout = timeout
 		}
