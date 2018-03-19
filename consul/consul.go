@@ -134,22 +134,20 @@ func (r *ConsulAdapter) buildChecks(service *bridge.Service) (checks consulapi.A
 
 	checks = append(checks, check)
 
-	// Additional health-check for the diagnostics endpoint (if configured).
-	if diagnosticsEndpointPath, ok := service.Attrs["check_http_diagnostics"]; ok {
-		// Quick-and-dirty clone
-		diagnosticCheck := &(*check)
+	// Additional script based health-check for the diagnostics endpoint (if configured).
+	if diagnosticsEndpointPath, ok := service.Attrs["check_script_diagnostics"]; ok {
+		diagnosticCheck := new(consulapi.AgentServiceCheck)
 
 		diagnosticCheck.Name = "diagnostics"
-
-		// Additional HTTP check for diagnostic end-point
-		checkURL, err := url.Parse(diagnosticCheck.HTTP)
-		if err != nil {
-			log.Printf("Error parsing HTTP check URL: %s", err)
-
-			return
+		diagnosticCheck.Script = r.interpolateService(script, service)
+		if timeout := service.Attrs["check_timeout_diagnostics"]; timeout != "" {
+			diagnosticCheck.Timeout = timeout
 		}
-		checkURL.Path = diagnosticsEndpointPath
-		diagnosticCheck.HTTP = checkURL.String()
+		if interval := service.Attrs["check_interval_diagnostics"]; interval != "" {
+			diagnosticCheck.Interval = interval
+		} else {
+			diagnosticCheck.Interval = DefaultInterval
+		}
 
 		checks = append(checks, diagnosticCheck)
 	}
