@@ -139,6 +139,11 @@ func (r *ConsulAdapter) buildChecks(service *bridge.Service) (checks consulapi.A
 		diagnosticCheck := new(consulapi.AgentServiceCheck)
 
 		diagnosticCheck.Name = "diagnostics"
+		
+		if status := service.Attrs["check_initial_status_diagnostics"]; status != "" {
+			diagnosticCheck.Status = status
+		}
+		
 		diagnosticCheck.Script = r.interpolateService(diagnosticCheckScript, service)
 		if timeout := service.Attrs["check_timeout_diagnostics"]; timeout != "" {
 			diagnosticCheck.Timeout = timeout
@@ -147,6 +152,10 @@ func (r *ConsulAdapter) buildChecks(service *bridge.Service) (checks consulapi.A
 			diagnosticCheck.Interval = interval
 		} else {
 			diagnosticCheck.Interval = DefaultInterval
+		}
+		
+		if deregister_after := service.Attrs["check_deregister_after_diagnostics"]; deregister_after != "" {
+			diagnosticCheck.DeregisterCriticalServiceAfter = deregister_after
 		}
 
 		checks = append(checks, diagnosticCheck)
