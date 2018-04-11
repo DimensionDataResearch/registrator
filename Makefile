@@ -11,7 +11,7 @@ dev:
 
 build:
 	mkdir -p build
-	go build -ldflags "-X main.Version=$(cat VERSION)" -o build/registrator
+	GOOS=linux GOARCH=amd64 go build -ldflags "-X main.Version=$(cat VERSION)" -o build/registrator
 	docker build -t $(ORG)/$(NAME) -t $(ORG)/$(NAME):$(VERSION) .
 
 .PHONY: build
